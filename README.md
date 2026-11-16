@@ -73,3 +73,7 @@ The app is left in `build/Build/Products/Release/FramePort.app`; move it to `/Ap
 It needs macOS 14 or later and a Swift 6.2 compiler or newer; it's built with Xcode 27. The app is signed to run locally (ad hoc) and isn't sandboxed.
 
 `Tools/make-icon.swift` draws the app icon: `swift Tools/make-icon.swift` from the project root writes every size into the asset catalog.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
