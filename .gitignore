@@ -1,0 +1,13 @@
+# Build products
+build/
+DerivedData/
+
+# Generated from project.yml by XcodeGen
+FramePort.xcodeproj/
+
+# Earlier builds of the app, kept on this machine only
+archive/
+
+xcuserdata/
+*.xcuserstate
+.DS_Store

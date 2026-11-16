@@ -1,0 +1,80 @@
+name: FramePort
+
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+targets:
+  FramePort:
+    type: application
+    platform: macOS
+    sources:
+      - path: FramePort
+      - path: Shared
+    # The MCP server goes inside the app, next to its executable: an AI agent is given that
+    # path to start it, and from there it finds the app it belongs to.
+    dependencies:
+      - target: frameport-mcp
+        embed: true
+        link: false
+        codeSign: true
+        copy:
+          destination: executables
+    info:
+      path: FramePort/Info.plist
+      properties:
+        CFBundleDisplayName: FramePort
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.video
+        NSHighResolutionCapable: true
+        NSPrincipalClass: NSApplication
+        # Lets videos be opened from Finder ("Open With") or dropped on the Dock icon.
+        # "Alternate" keeps FramePort from ever becoming the default video player.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Video
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.movie
+    settings:
+      base:
+        # The app was called FrameGrab at first. Its identifier keeps that name on purpose:
+        # it's what the system files the app's settings and permissions under.
+        PRODUCT_BUNDLE_IDENTIFIER: com.sebastian.FrameGrab
+        PRODUCT_NAME: FramePort
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Signed to run locally. Not sandboxed, so it can write PNGs to ~/Downloads
+        # (or whichever export folder is chosen) without extra entitlements.
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        DEAD_CODE_STRIPPING: YES
+
+  # FramePort's MCP server: what lets an AI agent see what's on screen in the app. A
+  # command-line program that speaks MCP over stdin/stdout and asks the running app.
+  frameport-mcp:
+    type: tool
+    platform: macOS
+    sources:
+      - path: FramePortMCP
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: frameport-mcp
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
+        SKIP_INSTALL: YES
+        DEAD_CODE_STRIPPING: YES
