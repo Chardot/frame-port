@@ -2,41 +2,6 @@ import AppKit
 import AVFoundation
 import Observation
 
-/// A video that has been opened and indexed.
-struct Video {
-    let url: URL
-    let asset: AVURLAsset
-    let track: AVAssetTrack
-    let frames: FrameTable
-    /// Size of a frame as it's displayed, i.e. after the track's rotation is applied.
-    let displaySize: CGSize
-    let orientation: CGAffineTransform
-    let frameRate: Double
-    let isHDR: Bool
-
-    var name: String { url.deletingPathExtension().lastPathComponent }
-
-    var summary: String {
-        var parts = ["\(Int(displaySize.width.rounded())) × \(Int(displaySize.height.rounded()))"]
-        if let frameRateText {
-            parts.append(frameRateText)
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    /// "60 fps", "29.97 fps" — nil for a video that doesn't declare a frame rate.
-    var frameRateText: String? {
-        guard frameRate > 0 else { return nil }
-        let rounded = frameRate.rounded()
-        let rate = abs(frameRate - rounded) < 0.01 ? String(Int(rounded)) : String(format: "%.2f", frameRate)
-        return "\(rate) fps"
-    }
-
-    var exportSource: FrameExporter.Source {
-        FrameExporter.Source(asset: asset, track: track, frames: frames, orientation: orientation, pixelSize: displaySize)
-    }
-}
-
 /// The frame the player is paused on, copied from the pixels it decoded.
 ///
 /// The window draws a paused frame itself, as an ordinary image, instead of leaving it to the
@@ -166,7 +131,7 @@ final class PlayerModel {
         isOpening = true
         loadTask = Task {
             do {
-                install(try await Self.read(url))
+                install(try await Video.read(url))
             } catch is CancellationError {
                 // A newer file replaced this one.
             } catch {
@@ -183,48 +148,15 @@ final class PlayerModel {
         tabsBeingRead += 1
         defer { tabsBeingRead -= 1 }
         do {
-            return try await Self.read(url)
+            return try await Video.read(url)
         } catch {
             show(Self.failure(toOpen: url, error))
             return nil
         }
     }
 
-    /// Reads a video file and indexes its frames.
-    private static func read(_ url: URL) async throws -> Video {
-        let asset = AVURLAsset(url: url)
-        guard let track = try await primaryVideoTrack(of: asset) else {
-            throw VideoError.noVideoTrack
-        }
-        let (naturalSize, orientation, nominalFrameRate, characteristics) = try await track.load(.naturalSize, .preferredTransform, .nominalFrameRate, .mediaCharacteristics)
-        let frames = try await FrameTable.load(track: track, of: asset)
-        try Task.checkCancellation()
-
-        let displayRect = CGRect(origin: .zero, size: naturalSize).applying(orientation)
-        return Video(
-            url: url,
-            asset: asset,
-            track: track,
-            frames: frames,
-            displaySize: CGSize(width: abs(displayRect.width), height: abs(displayRect.height)),
-            orientation: orientation,
-            frameRate: Double(nominalFrameRate),
-            isHDR: characteristics.contains(.containsHDRVideo)
-        )
-    }
-
     private static func failure(toOpen url: URL, _ error: Error) -> Notice {
         Notice(kind: .failure, message: "Couldn't open “\(url.lastPathComponent)”. \(explanation(of: error))")
-    }
-
-    /// The video track the player shows: the first enabled one. (Some files carry extra,
-    /// disabled video tracks, such as alternate angles or depth data.)
-    private static func primaryVideoTrack(of asset: AVAsset) async throws -> AVAssetTrack? {
-        let tracks = try await asset.loadTracks(withMediaType: .video)
-        for track in tracks where (try? await track.load(.isEnabled)) == true {
-            return track
-        }
-        return tracks.first
     }
 
     /// Shows a video that has been read, from its first frame.
@@ -484,8 +416,7 @@ final class PlayerModel {
 
     /// The size of the picture in its own pixels, as it's shown (upright).
     var pictureSize: CGSize? {
-        guard let video else { return nil }
-        return CGSize(width: video.displaySize.width.rounded(), height: video.displaySize.height.rounded())
+        video?.pictureSize
     }
 
     private var viewport: Viewport? {

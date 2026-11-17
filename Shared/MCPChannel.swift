@@ -17,7 +17,7 @@ enum MCPChannel {
 
     /// The user's home as their account has it. Not `HOME`: an agent may start its tools with
     /// one of its own.
-    private static var homeDirectory: String {
+    static var homeDirectory: String {
         if let record = getpwuid(getuid()), let home = record.pointee.pw_dir {
             return String(cString: home)
         }
@@ -37,7 +37,9 @@ enum MCPChannel {
                 bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
-        guard bound == 0, chmod(path, 0o600) == 0, Darwin.listen(descriptor, 16) == 0 else {
+        // As many callers may wait to be taken as the system lets a socket hold: an agent
+        // asks for dozens of frames at once.
+        guard bound == 0, chmod(path, 0o600) == 0, Darwin.listen(descriptor, SOMAXCONN) == 0 else {
             close(descriptor)
             return nil
         }
@@ -47,20 +49,36 @@ enum MCPChannel {
 
     /// A socket connected to whoever listens at `path` — nil if nobody does.
     static func connect(to path: String) -> Int32? {
-        guard var address = address(for: path) else { return nil }
+        if case .connected(let descriptor) = reach(path) { return descriptor }
+        return nil
+    }
+
+    /// What came of trying to connect to a socket.
+    enum Reach {
+        case connected(Int32)
+        /// There's a socket there and it didn't take the call: nobody's listening at it any
+        /// more — or whoever is has, right now, as many callers waiting as it can hold.
+        case refused
+        /// There's no socket there, or no way to it.
+        case absent
+    }
+
+    static func reach(_ path: String) -> Reach {
+        guard var address = address(for: path) else { return .absent }
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard descriptor >= 0 else { return nil }
+        guard descriptor >= 0 else { return .absent }
         let connected = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
         guard connected == 0 else {
+            let wasRefused = errno == ECONNREFUSED
             close(descriptor)
-            return nil
+            return wasRefused ? .refused : .absent
         }
         _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC)
-        return descriptor
+        return .connected(descriptor)
     }
 
     private static func address(for path: String) -> sockaddr_un? {

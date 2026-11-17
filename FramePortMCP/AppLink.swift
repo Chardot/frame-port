@@ -35,10 +35,10 @@ struct AppLink {
     /// it — also when the app can't be asked: that's then an error the model gets to read.
     func call(_ name: String, arguments: [String: Any]) -> [String: Any] {
         guard let bundleIdentifier else {
-            return Self.failure("frameport-mcp only works from inside FramePort.app, and this copy is at \(executablePath).")
+            return Self.failure("To see what's open in FramePort, frameport-mcp has to be the one inside FramePort.app, and this copy is at \(executablePath). It can still read a video file: give its path as file.")
         }
-        guard let app = MCPChannel.connect(to: MCPChannel.socketPath(forBundle: bundleIdentifier)) else {
-            return Self.failure("FramePort isn't open. Ask the user to open it, with the video they mean, and try again.")
+        guard let app = Self.connect(to: MCPChannel.socketPath(forBundle: bundleIdentifier)) else {
+            return Self.failure("FramePort isn't open. Ask the user to open it, with the video they mean, and try again — or, if it's a video file you have the path of, give that as file: reading a file doesn't take FramePort.")
         }
         defer { close(app) }
         MCPChannel.prepare(app, timeout: Self.secondsToWait)
@@ -55,6 +55,21 @@ struct AppLink {
             return Self.failure("FramePort is open but didn't answer. If it stays that way, quitting and reopening FramePort should fix it.")
         }
         return result
+    }
+
+    /// A socket connected to the app, if it's open. From outside, an app that's taking as
+    /// many calls as it can hold looks the same as a socket that an app which didn't quit
+    /// properly left behind: both refuse. So a refusal is tried again for a moment before
+    /// it's taken to mean that nobody's there.
+    private static func connect(to path: String) -> Int32? {
+        for _ in 0..<16 {
+            switch MCPChannel.reach(path) {
+            case .connected(let descriptor): return descriptor
+            case .absent: return nil
+            case .refused: usleep(20_000)
+            }
+        }
+        return nil
     }
 
     private static func failure(_ message: String) -> [String: Any] {

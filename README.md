@@ -2,7 +2,7 @@
 
 A small macOS app for going through a video frame by frame and saving frames as PNG.
 
-It's made for screen recordings — finding the frame where an animation starts, a glitch flashes by or a layout jumps — and opens any video macOS can play. It also carries an MCP server, so an AI agent you're working with can see the frame you're looking at.
+It's made for screen recordings — finding the frame where an animation starts, a glitch flashes by or a layout jumps — and opens any video macOS can play. It also carries an MCP server, so an AI agent you're working with can see the frame you're looking at, or go through a recording on its own.
 
 ## What it does
 
@@ -10,7 +10,7 @@ It's made for screen recordings — finding the frame where an animation starts,
 - **PNG export.** Return saves the frame on screen at the video's own size. Select a segment and every frame of it is saved, in a folder of its own.
 - **Zoom.** Pinch to get closer. A zoom comes to rest on a whole number of screen pixels per video pixel, so each pixel of the video is drawn as an exact square.
 - **Tabs.** Drop a second video on the window and it opens in a tab next to the first.
-- **MCP server.** Three read-only tools let an agent see what's on screen, look at any frame, or look at a run of frames.
+- **MCP server.** Four read-only tools let an agent see what's on screen, look at any frame or run of frames, and find where the picture changes — in a video you have open, or in any video file, with nobody at the screen.
 
 ## Using it
 
@@ -43,7 +43,7 @@ Frame numbers start at 1, as in the window. Nothing is overwritten: a name that'
 
 ## The MCP server
 
-Inside the app there's a command-line program, `frameport-mcp`, that speaks MCP over stdin and stdout and asks the running app what's on screen. To give it to Claude Code:
+Inside the app there's a command-line program, `frameport-mcp`, that speaks MCP over stdin and stdout. To give it to Claude Code:
 
 ```sh
 claude mcp add --scope user frameport -- /Applications/FramePort.app/Contents/MacOS/frameport-mcp
@@ -56,8 +56,23 @@ Any other MCP client takes it as a stdio server with that path as its command.
 | `get_view` | The frame on screen as an image, and the part you've zoomed in on; the video's file, size and frame rate; the frame number, the selected segment and the videos in other tabs |
 | `get_frame` | Any frame, by its number — or a region of it, enlarged in exact pixel blocks |
 | `get_segment` | The frames of the selected segment, or of any other run of frames, in order; up to 48 in one answer — of a longer run, one frame in every so many |
+| `get_changes` | Where the picture changes, as text: the stretches of frames over which it does, where in the picture, and whether it ends up different or goes back to what it was |
 
-The tools only look: they never change what you see in FramePort and they write nothing to disk. FramePort has to be open.
+The tools only look: they never change what you see in FramePort and they write nothing to disk.
+
+### With you, or without you
+
+The tools are about what you have open in FramePort: ask an agent about "this frame" or "the segment I selected" and it sees them.
+
+`get_frame`, `get_segment` and `get_changes` also take the path of a video `file`. The server then reads the file itself, with the same frame numbers and the same pixels as the app. FramePort doesn't have to be open, and nothing shows in its window. That's what lets an agent work on a recording with nobody at the screen: record the iOS Simulator with `xcrun simctl io booted recordVideo`, ask `get_changes` where something happens in the recording, and look at just those frames.
+
+`get_changes` compares every frame with what came before it, a block of the picture at a time. That tells a change from the noise of compression, catches a fade too slow to see from one frame to the next, and doesn't miss something that's there for a single frame. It goes through about a thousand frames of an iPhone screen recording a second.
+
+For Claude Code to call the tools without asking each time, allow them in its settings:
+
+```json
+{ "permissions": { "allow": ["mcp__frameport__*"] } }
+```
 
 ## Building
 

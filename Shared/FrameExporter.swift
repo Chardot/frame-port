@@ -175,7 +175,7 @@ enum FrameExporter {
         return queue
     }()
 
-    private static func look<Seen: Sendable>(_ read: @escaping @Sendable () throws -> Seen) async throws -> Seen {
+    static func look<Seen: Sendable>(_ read: @escaping @Sendable () throws -> Seen) async throws -> Seen {
         try await withCheckedThrowingContinuation { continuation in
             lookers.addOperation {
                 continuation.resume(with: Result { try read() })
@@ -191,18 +191,24 @@ enum FrameExporter {
         return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
+    /// What a frame is decoded into to become a picture.
+    private static let pictureSettings: [String: Any] = [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        // Ask for standard-range Rec. 709 so HDR and wide-gamut sources are tone-mapped
+        // by the decoder pipeline before they reach us.
+        AVVideoColorPropertiesKey: FrameImage.standardRangeColor,
+    ]
+
     /// Starts decoding at the frames of `range`. What comes out has to be matched against
     /// the `FrameTable`: there's a frame of margin on each side, so that nothing depends on
     /// how the reader rounds the edges of its time range.
-    private static func startReading(_ source: Source, around range: ClosedRange<Int>) throws -> (AVAssetReader, AVAssetReaderTrackOutput) {
+    ///
+    /// Frames come out as pictures unless other `settings` are asked for. Whoever reads
+    /// them does it inside `look`, or `export`'s own way: never on a thread async code shares.
+    static func startReading(_ source: Source, around range: ClosedRange<Int>, as settings: [String: Any]? = nil) throws -> (AVAssetReader, AVAssetReaderTrackOutput) {
         let frames = source.frames
         let reader = try AVAssetReader(asset: source.asset)
-        let output = AVAssetReaderTrackOutput(track: source.track, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            // Ask for standard-range Rec. 709 so HDR and wide-gamut sources are tone-mapped
-            // by the decoder pipeline before they reach us.
-            AVVideoColorPropertiesKey: FrameImage.standardRangeColor,
-        ])
+        let output = AVAssetReaderTrackOutput(track: source.track, outputSettings: settings ?? pictureSettings)
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else { throw VideoError.unreadable }
         reader.add(output)

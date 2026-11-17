@@ -15,6 +15,7 @@ final class MCPServer {
     static let earlierRevisions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 
     private let app: AppLink
+    private let files = VideoFiles()
 
     private let outputLock = NSLock()
     private let callsLock = NSLock()
@@ -196,8 +197,9 @@ final class MCPServer {
 
     // MARK: - Tools
 
-    /// Has the app carry out a tool call, on a thread of its own so that other messages are
-    /// answered meanwhile. `finish` dresses the result for the revision it was asked in.
+    /// Has a tool call carried out — by the app, or here if it's about a file — on a thread
+    /// of its own, so that other messages are answered meanwhile. `finish` dresses the result
+    /// for the revision it was asked in.
     private func call(_ parameters: [String: Any], id: RequestID, reply: @escaping ([String: Any]?) -> Void, finish: @escaping ([String: Any]) -> [String: Any]) {
         guard let name = parameters["name"] as? String else {
             reply(Self.failure(-32602, "Invalid params: a tool call names its tool.", id: id))
@@ -218,7 +220,7 @@ final class MCPServer {
 
         callsLock.withLock { _ = underway.insert(id.key) }
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let result = app.call(name, arguments: arguments)
+            let result = VideoFiles.concerns(arguments) ? files.answer(name, arguments: arguments) : app.call(name, arguments: arguments)
             let isCalledOff = callsLock.withLock {
                 underway.remove(id.key)
                 return calledOff.remove(id.key) != nil
